@@ -1,6 +1,6 @@
 CUDA_VISIBLE_DEVICES=0 python render_metrics.py \
---source_path /disk1/data/m3/data_v2/train \
---model_path /disk1/checkpoint/mmm/train_bsz1_gpu1_embTrue_clipTrue_sigTrue_dinoTrue_seemTrue_llaTrue_llvTrue_dim160_temp0.05_baseline/run_0000 \
+--source_path /scratch1/train \
+--model_path /scratch1/train_m3/train_bsz8_gpu1_embTrue_clipTrue_sigTrue_dinoFalse_seemFalse_llaTrue_llvFalse_dim160_temp0.05_test/run_0004 \
 --preload_dataset_to_gpu_threshold 0 \
 --local_sampling \
 --render \
@@ -8,7 +8,6 @@ CUDA_VISIBLE_DEVICES=0 python render_metrics.py \
 --use_embed \
 --use_clip \
 --use_siglip \
---use_seem \
---use_dinov2 \
---use_llama3 \
---use_llamav
+# --use_seem \
+# --use_llama3 \
+# --use_llamav

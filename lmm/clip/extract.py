@@ -14,7 +14,7 @@ import torchvision.transforms as T
 import torch.nn.functional as F
 
 
-data_root = "/disk1/data/m3/data_v2/tabletop_v2"
+data_root = "/scratch1/tandt/truck/"
 input_folder = os.path.join(data_root, "images")
 output_folder = os.path.join(data_root, "clip")
 embed_folder = os.path.join(output_folder, "embeds")

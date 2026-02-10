@@ -48,7 +48,7 @@ def filter_embeddings_efficient(embeddings, threshold=0.9, chunk_size=1000):
     return filtered_embeddings
 
 if __name__ == "__main__":
-    data_root = "/data/xueyanz/data/3dgs/playroom"  # Update this path as needed
+    data_root = "/scratch1/tandt/truck/"  # Update this path as needed
     
     # Set up CUDA if available
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -61,11 +61,11 @@ if __name__ == "__main__":
     
     print("Filtering embeddings...")
     # 0.7, 0.75, 0.8, 0.85, 0.9
-    threshold = 0.9
+    threshold = 0.7
     mem_embeddings = filter_embeddings_efficient(all_embeddings, threshold=threshold, chunk_size=5000)
     print(f"Filtered embeddings shape: {mem_embeddings.shape}")
     
     # Save the filtered embeddings
     output_path = os.path.join(data_root, "siglip", f"mem{int(threshold*100)}.emb")
-    torch.save(mem_embeddings.cpu(), output_path)
+    # torch.save(mem_embeddings.cpu(), output_path)
     print(f"Saved filtered embeddings to {output_path}")

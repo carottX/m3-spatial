@@ -53,7 +53,12 @@ if __name__ == "__main__":
     init_args(args)
     args = utils.get_args()
 
+    print(args.use_wandb)
+
+    args.use_wandb = True
+
     if is_main_process() and args.use_wandb:
+        print('Using wandb')
         init_wandb(args, args.model_path, job_name=args.model_path.split("/")[-2])
 
     # create log folder

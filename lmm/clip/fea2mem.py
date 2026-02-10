@@ -49,7 +49,7 @@ def filter_embeddings_efficient(embeddings, threshold=0.9, chunk_size=1000):
     return filtered_embeddings
 
 if __name__ == "__main__":
-    data_root = "/data/xueyanz/data/3dgs/train"  # Update this path as needed
+    data_root = "/scratch1/tandt/truck/"  # Update this path as needed
     
     # Set up CUDA if available
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

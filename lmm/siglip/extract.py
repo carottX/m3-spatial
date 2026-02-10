@@ -10,7 +10,7 @@ from .modeling_siglip import SiglipModel
 from .utils import visualize_feature, visualize_feature_kmeans, visualize_feature_gmm, visualize_mask_logits
 from ..dinov2.utils import visualize_feature
 
-data_root = "/disk1/data/m3/data_v2/tabletop_v2"
+data_root = "/scratch1/tandt/truck/"
 input_folder = os.path.join(data_root, "images")
 output_folder = os.path.join(data_root, "siglip")
 embed_folder = os.path.join(output_folder, "embeds")

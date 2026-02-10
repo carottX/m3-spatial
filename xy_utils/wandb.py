@@ -1,8 +1,7 @@
 import os
 import wandb
-
 # key: c40efa7f20dc73bee12b5ee885ea48b98f8caff4
-def init_wandb(args, job_dir, entity='xueyanz', project='mmm', job_name='tmp'):
+def init_wandb(args, job_dir, entity='xuzm0616-nanjing-university', project='mmm', job_name='tmp'):
     wandb_dir = os.path.join(job_dir, 'wandb')
     os.makedirs(wandb_dir, exist_ok=True)
     runid = None

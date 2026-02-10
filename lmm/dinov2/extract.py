@@ -9,7 +9,7 @@ from transformers import AutoImageProcessor
 from .modeling_dinov2 import Dinov2Model
 from .utils import visualize_feature
 
-data_root = "/disk1/data/m3/data_v2/tabletop_v2"
+data_root = "/scratch1/tandt/truck/"
 input_folder = os.path.join(data_root, "images")
 output_folder = os.path.join(data_root, "dinov2")
 embed_folder = os.path.join(output_folder, "embeds")

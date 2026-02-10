@@ -15,8 +15,12 @@ def add_image_marker(image_array, text="Image1", font_size=40, padding=10):
     except IOError:
         font = ImageFont.load_default()
     
-    # Get text size
-    text_width, text_height = draw.textsize(text, font=font)
+    try:
+        text_width, text_height = draw.textsize(text, font=font)
+    except AttributeError:
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_width = bbox[2] - bbox[0]
+        text_height = bbox[3] - bbox[1]
     
     # Calculate position for the marker (top right corner)
     x = image.width - text_width - padding * 2

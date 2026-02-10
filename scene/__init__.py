@@ -156,6 +156,7 @@ class Scene:
         else:
             train_cameras = scene_info.train_cameras
         self.train_cameras = cameraList_from_camInfos(train_cameras, args)
+        # utils.print_rank_0('Finished decoding training cameras.')
         # output the number of cameras in the training set and image size to the log file
         log_file.write(
             "Number of local training cameras: {}\n".format(len(self.train_cameras))

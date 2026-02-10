@@ -289,6 +289,8 @@ if __name__ == "__main__":
         torch.distributed.barrier(group=utils.DEFAULT_GROUP)
     # Initialize system state (RNG)
     safe_state(args.quiet)
+
+    print(args.load_path)
     
     render_sets(
         lp.extract(args),

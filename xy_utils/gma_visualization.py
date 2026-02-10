@@ -57,6 +57,7 @@ import utils.general_utils as utils
 from utils.loss_utils import l2_loss, cosine_loss
 from xy_utils.memory import index_to_raw
 from xy_utils.visual import vpca_embeddings
+from utils.graphics_utils import geom_transform_points
 
 import umap
 import matplotlib.pyplot as plt
@@ -261,8 +262,8 @@ def visualize_embeddings_3d(embeddings_list,
     
     # Get the RGBA buffer from the figure
     w, h = fig.canvas.get_width_height()
-    buffer = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
-    image_array = buffer.reshape((h, w, 3))
+    buffer = np.frombuffer(fig.canvas.tostring_argb(), dtype=np.uint8)
+    image_array = buffer.reshape((h, w, 4))[:, :, 1:]  # Convert ARGB to RGB
     
     return image_array, fig, ax
 
@@ -335,7 +336,117 @@ def overlay_features(gt_image, raw_feature_pca, alpha=0.6):
     overlaid = np.clip(overlaid, 0, 1)
     return overlaid
 
-def visualize_gma(source_path, gt_image, raw_feature, ren_feature, similarity, all_embeddings, memory, mem2fea):
+
+def _resolve_mem_xyz_path(mem_xyz_dir: str, model: str) -> str:
+    if mem_xyz_dir is None:
+        raise FileNotFoundError("mem_xyz_dir is None")
+    if os.path.isfile(mem_xyz_dir):
+        return mem_xyz_dir
+    candidates = [
+        os.path.join(mem_xyz_dir, f"mem_xyz_{model}.pt"),
+        os.path.join(mem_xyz_dir, f"mem_xyz_{model}.pth"),
+        os.path.join(mem_xyz_dir, f"mem_xyz{model}.pt"),
+        os.path.join(mem_xyz_dir, f"mem_xyz{model}.pth"),
+    ]
+    for p in candidates:
+        if os.path.isfile(p):
+            return p
+    raise FileNotFoundError(
+        f"Cannot find mem_xyz for model '{model}' in '{mem_xyz_dir}'. Tried e.g. '{candidates[0]}'."
+    )
+
+
+def _load_mem_xyz(path: str) -> torch.Tensor:
+    obj = torch.load(path, map_location="cpu")
+    mem_xyz = obj["mem_xyz"] if isinstance(obj, dict) and "mem_xyz" in obj else obj
+    if not isinstance(mem_xyz, torch.Tensor):
+        raise TypeError(f"mem_xyz must be a torch.Tensor, got {type(mem_xyz)}")
+    if mem_xyz.ndim != 2 or mem_xyz.shape[1] != 3:
+        raise ValueError(f"Expected mem_xyz [M,3], got {tuple(mem_xyz.shape)}")
+    return mem_xyz.float()
+
+
+def _build_camera_map(scene: Scene):
+    cams = []
+    try:
+        tc = scene.getTrainCameras()
+        if tc is not None:
+            cams.extend(list(tc))
+        print(tc)
+    except Exception:
+        pass
+    try:
+        vc = scene.getTestCameras()
+        if vc is not None:
+            cams.extend(list(vc))
+        print(vc)
+    except Exception:
+        pass
+    cam_map = {}
+    for cam in cams:
+        name = getattr(cam, "image_name", None)
+        if name is None:
+            continue
+        # Index by full name and basename to be robust to paths.
+        if name not in cam_map:
+            cam_map[name] = cam
+        base = os.path.basename(name)
+        if base not in cam_map:
+            cam_map[base] = cam
+    return cam_map
+
+
+def _project_world_to_pixel(cam, xyz_world: np.ndarray, image_wh):
+    xyz_world = np.asarray(xyz_world, dtype=np.float32).reshape(3)
+    w_img, h_img = int(image_wh[0]), int(image_wh[1])
+    if w_img <= 1 or h_img <= 1:
+        return None
+    if not hasattr(cam, "full_proj_transform"):
+        return None
+
+    device = cam.full_proj_transform.device
+    p = torch.tensor(xyz_world[None, :], device=device, dtype=torch.float32)
+    ndc = geom_transform_points(p, cam.full_proj_transform)[0]
+    ndc_x = float(ndc[0].item())
+    ndc_y = float(ndc[1].item())
+    ndc_z = float(ndc[2].item())
+    if not np.isfinite(ndc_x) or not np.isfinite(ndc_y) or not np.isfinite(ndc_z):
+        return None
+
+    x = int(round((ndc_x + 1.0) * 0.5 * (w_img - 1)))
+    y = int(round((1.0 - (ndc_y + 1.0) * 0.5) * (h_img - 1)))
+    if x < 0 or x >= w_img or y < 0 or y >= h_img:
+        return None
+    return (x, y)
+
+
+def _draw_abs_marker(image: np.ndarray, xy, radius: int = 18):
+    if xy is None:
+        return image
+    x, y = int(xy[0]), int(xy[1])
+    out = image.copy()
+    if out.shape[-1] == 4:
+        color = (255, 0, 0, 255)  # Blue in BGRA
+        white = (255, 255, 255, 255)
+    else:
+        color = (255, 0, 0)  # Blue in BGR
+        white = (255, 255, 255)
+    cv2.circle(out, (x, y), radius, color, -1)
+    cv2.circle(out, (x, y), radius, white, 2)
+    return out
+
+def visualize_gma(
+    source_path,
+    gt_image,
+    raw_feature,
+    ren_feature,
+    similarity,
+    all_embeddings,
+    memory,
+    mem2fea,
+    mem_xyz=None,
+    cam_map=None,
+):
     # [0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]
     _,h,w = gt_image.shape
     gt_image = gt_image.permute(1,2,0).cpu().numpy()[:,:,::-1]
@@ -364,7 +475,33 @@ def visualize_gma(source_path, gt_image, raw_feature, ren_feature, similarity, a
         info = mem2fea[index.item()][0]
         ret_image = os.path.join(images_root, info['image_name'])
         ret_image = cv2.imread(ret_image)
+        if ret_image is None:
+            continue
         ret_image = draw_colored_circles(ret_image, [(info['point_height'], info['point_width'])], index=idx)
+
+        # Also draw the projected mem_xyz point for this memory entry, if available.
+        if mem_xyz is not None and cam_map is not None:
+            try:
+                xyz_world = mem_xyz[index.item()].detach().cpu().numpy()
+                img_name = info.get('image_name', None)
+                if img_name is None:
+                    raise KeyError("mem2fea occurrence missing image_name")
+
+                # Try exact match, then basename.
+                cam = cam_map.get(img_name, None)
+                # print(img_name)
+                # print(os.path.basename(img_name))
+                if cam is None:
+                    cam = cam_map.get(os.path.splitext(img_name)[0], None)
+                if cam is not None:
+                    print(f"Projecting mem_xyz for index {index.item()} onto image '{img_name}'")
+                    h_img, w_img = ret_image.shape[:2]
+                    xy = _project_world_to_pixel(cam, xyz_world, (w_img, h_img))
+                    print('Pixel is at:', xy)
+                    ret_image = _draw_abs_marker(ret_image, xy, radius=20)
+            except Exception as e:
+                print(f"{e}")
+                pass
         ret_images += [ret_image]
     point_image = create_2x2_grid(ret_images)
     # cv2.imwrite("point_image.png", point_image)
@@ -375,7 +512,7 @@ def visualize_gma(source_path, gt_image, raw_feature, ren_feature, similarity, a
     
     return overlay_gt_pq, psc_visual[:,:,::-1], point_image, ren_feature_pca
     
-def render_set(model_path, source_path, name, iteration, views, gaussians, pipeline, scene, background):
+def render_set(model_path, source_path, name, iteration, views, gaussians, pipeline, scene, background, cam_map=None, mem_xyz_map=None):
     pq_path = os.path.join(model_path, name, "ours_{}".format(iteration), "principal_query")
     psc_path = os.path.join(model_path, name, "ours_{}".format(iteration), "principal_scene_component")
     raw_path = os.path.join(model_path, name, "ours_{}".format(iteration), "raw_feature")
@@ -498,7 +635,21 @@ def render_set(model_path, source_path, name, iteration, views, gaussians, pipel
                 else:
                     all_embeddings = mem_load[model]
 
-                pq_visual, psc_visual, point_visual, ren_visual = visualize_gma(source_path, gt_image, embedding_resized, raw_feature, similarity, all_embeddings, emb_mem, mem2fea)
+                mem_xyz = None
+                if mem_xyz_map is not None:
+                    mem_xyz = mem_xyz_map.get(model, None)
+                pq_visual, psc_visual, point_visual, ren_visual = visualize_gma(
+                    source_path,
+                    gt_image,
+                    embedding_resized,
+                    raw_feature,
+                    similarity,
+                    all_embeddings,
+                    emb_mem,
+                    mem2fea,
+                    mem_xyz=mem_xyz,
+                    cam_map=cam_map,
+                )
                 
                 pq_image_path = os.path.join(pq_path, model, "{0:05d}".format(actual_idx) + ".png")
                 psc_image_path = os.path.join(psc_path, model, "{0:05d}".format(actual_idx) + ".png")
@@ -536,6 +687,23 @@ def render_sets(
         scene = Scene(args, gaussians, load_iteration=iteration, shuffle=False, _eval=True)
         scene.load_weights(args.load_path)
 
+        cam_map = _build_camera_map(scene)
+        print(cam_map.keys())
+
+        # Optional mem_xyz loading (used to project 3D coords onto images)
+        mem_xyz_map = {}
+        mem_xyz_dir = getattr(args, "mem_xyz_dir", None)
+        if mem_xyz_dir is None:
+            mem_xyz_dir = os.path.join(args.load_path, "mem_xyz")
+        for m in ["clip", "siglip", "dinov2", "seem", "llama3", "llamav"]:
+            if not getattr(args, f"use_{m}", False):
+                continue
+            try:
+                p = _resolve_mem_xyz_path(mem_xyz_dir, m)
+                mem_xyz_map[m] = _load_mem_xyz(p)
+            except Exception:
+                pass
+
         bg_color = [1, 1, 1] if dataset.white_background else [0, 0, 0]
         background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
         
@@ -550,6 +718,8 @@ def render_sets(
                 pipeline,
                 scene,
                 background,
+                cam_map=cam_map,
+                mem_xyz_map=mem_xyz_map,
             )
 
         if not skip_test:
@@ -563,6 +733,8 @@ def render_sets(
                 pipeline,
                 scene,
                 background,
+                cam_map=cam_map,
+                mem_xyz_map=mem_xyz_map,
             )
 
 
@@ -584,6 +756,12 @@ if __name__ == "__main__":
     parser.add_argument("--distributed_load", action="store_true")  # TODO: delete this.
     parser.add_argument("--l", default=-1, type=int)
     parser.add_argument("--r", default=-1, type=int)
+    parser.add_argument(
+        "--mem_xyz_dir",
+        default=None,
+        type=str,
+        help="Directory containing mem_xyz_<model>.pt (default: <load_path>/mem_xyz)",
+    )
     args = get_combined_args(parser)
     print("Rendering " + args.model_path)
     init_distributed(args)
@@ -601,10 +779,10 @@ if __name__ == "__main__":
     ## Prepare arguments.
     # Check arguments
     init_args(args)
-    if args.skip_train:
-        args.num_train_cameras = 0
-    if args.skip_test:
-        args.num_test_cameras = 0
+    # NOTE: Do NOT zero out num_train_cameras/num_test_cameras when skipping rendering.
+    # We still want all camera poses available to build `cam_map` so mem_xyz can be
+    # projected onto any occurrence image referenced by mem2fea (which may come from
+    # train or test views).
     # Set up global args
     set_args(args)
 

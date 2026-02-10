@@ -3,7 +3,9 @@ import torch.nn.functional as F
 
 def softmax_wt(logits, temperature=1, dim=-1):
     scaled_logits = logits / temperature
-    return F.softmax(scaled_logits, dim=dim)
+    sftmax = F.softmax(scaled_logits, dim=dim)
+    # print(sftmax.max())
+    return sftmax
 
 # Define a function to apply softmax in chunks along the flattened n dimension
 def softmax_in_chunks(x, chunk_size=1000, dim=-1, temperature=1.0):
